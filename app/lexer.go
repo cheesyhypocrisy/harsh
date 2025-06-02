@@ -7,6 +7,8 @@ type TokenType int
 const (
   LiteralStr TokenType = iota
   Space
+  Redirect
+  Append
 )
 
 type Token struct {
@@ -76,6 +78,44 @@ func (l *Lexer) Lex() ([]Token, error) {
           l.position++
         }
         l.position++
+      case '1':
+        curr := l.position+1
+        if curr < len(l.input) && l.input[curr] == ' ' {
+          curr++
+        }
+        if curr+1 < len(l.input) && l.input[curr:curr+2] == ">>" {
+          tokens = append(tokens, Token{typ: Append, literal: "stdout"})
+          l.position = curr+2
+        } else if curr < len(l.input) && l.input[curr] == '>' {
+          tokens = append(tokens, Token{typ: Redirect, literal: "stdout"})
+          l.position = curr+1
+        } else {
+          tokens = append(tokens, Token{typ: LiteralStr, literal: string(1)})
+          l.position++
+        }
+      case '2':
+        curr := l.position+1
+        if curr < len(l.input) && l.input[curr] == ' ' {
+          curr++
+        }
+        if curr+1 < len(l.input) && l.input[curr:curr+2] == ">>" {
+          tokens = append(tokens, Token{typ: Append, literal: "stderr"})
+          l.position = curr+2
+        } else if curr < len(l.input) && l.input[curr] == '>' {
+          tokens = append(tokens, Token{typ: Redirect, literal: "stderr"})
+          l.position = curr+1
+        } else {
+          tokens = append(tokens, Token{typ: LiteralStr, literal: string(2)})
+          l.position++
+        }
+      case '>':
+        if l.position+1 < len(l.input) && l.input[l.position+1] == '>' {
+          tokens = append(tokens, Token{typ: Append, literal: "stdout"})
+          l.position += 2
+        } else {
+          tokens = append(tokens, Token{typ: Redirect, literal: "stdout"})
+          l.position++
+        }
       default:
         curr := ""
         end := l.position

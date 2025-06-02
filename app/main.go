@@ -105,8 +105,51 @@ func eval(command *Command) (string, error) {
     default:
       _, err := findExecutable(command.Name)
       if err == nil {
-        result, err := exec.Command(command.Name, command.Args...).Output()
-        return string(result), err
+        cmd := exec.Command(command.Name, command.Args...)
+        for _, redir := range command.Redirs {
+          if redir.Type == ">" {
+            if redir.Fd == 1 {
+              file, err := os.Create(redir.FilePath)
+              if err != nil {
+                return "", err
+              }
+              defer file.Close()
+              cmd.Stdout = file
+            } else if redir.Fd == 2 {
+              file, err := os.Create(redir.FilePath)
+              if err != nil {
+                return "", err
+              }
+              defer file.Close()
+              cmd.Stderr = file
+            }
+          } else if redir.Type == ">>" {
+            if redir.Fd == 1 {
+              file, err := os.OpenFile(redir.FilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+              if err != nil {
+                return "", err
+              }
+              defer file.Close()
+              cmd.Stdout = file
+            } else if redir.Fd == 2 {
+              file, err := os.OpenFile(redir.FilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+              if err != nil {
+                return "", err
+              }
+              defer file.Close()
+              cmd.Stderr = file
+            }
+          }
+        }
+        if cmd.Stdout == nil {
+          cmd.Stdout = os.Stdout
+        }
+        if cmd.Stderr == nil {
+          cmd.Stderr = os.Stderr
+        }
+        _ = cmd.Run()
+        command.Redirs = []Redirection{}
+        return "", nil
       }
       return "", fmt.Errorf("%s: command not found\n",command.Name)
     }
@@ -135,11 +178,44 @@ func shell() error {
     }
 
     result, err := eval(command)
+    stdout := os.Stdout
+    stderr := os.Stderr
+    for _, redir := range command.Redirs {
+      if redir.Type == ">" && redir.Fd == 1 {
+        file, err := os.Create(redir.FilePath)
+        if err != nil {
+          return err
+        }
+        defer file.Close()
+        stdout = file
+      } else if redir.Type == ">" && redir.Fd == 2 {
+        file, err := os.Create(redir.FilePath)
+        if err != nil {
+          return err
+        }
+        defer file.Close()
+        stderr = file
+      } else if redir.Type == ">>" && redir.Fd == 1 {
+        file, err := os.OpenFile(redir.FilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+        if err != nil {
+          return err
+        }
+        defer file.Close()
+        stdout = file
+      } else if redir.Type == ">>" && redir.Fd == 2 {
+        file, err := os.OpenFile(redir.FilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+        if err != nil {
+          return err
+        }
+        defer file.Close()
+        stderr = file
+      }
+    }
     
     if err != nil {
-      fmt.Fprint(os.Stderr, err)
+      fmt.Fprint(stderr, err)
     } else {
-      fmt.Print(result)
+      fmt.Fprint(stdout, result)
     }
   }
 }
