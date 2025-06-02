@@ -18,6 +18,8 @@ const (
   exit
   echo
   _type
+  pwd
+  cd
 )
 
 func lookupBuiltin(command string) builtin {
@@ -28,6 +30,10 @@ func lookupBuiltin(command string) builtin {
     return echo
   case "type":
     return _type
+  case "pwd":
+    return pwd
+  case "cd":
+    return cd
   default:
     return unknownBuiltin
   }
@@ -75,6 +81,27 @@ func eval(command string, args []string) (string, error) {
       } else {
         return fmt.Sprintf("%s is a shell builtin\n", args[0]), nil
       }
+    case pwd:
+      dir, err := os.Getwd()
+      return dir + "\n", err
+    case cd:
+      if len(args) == 0 || args[0] == "~" {
+        homeDir, exists := os.LookupEnv("HOME")
+        if !exists {
+          username := os.Getenv("USER")
+          homeDir = fmt.Sprintf("/home/%s", username)
+        }
+
+        if err := os.Chdir(homeDir); err != nil {
+          return "", fmt.Errorf("cd: %s: No such file or directory\n", homeDir)
+        }
+
+        return "", nil
+      }
+      if err := os.Chdir(args[0]); err != nil {
+        return "", fmt.Errorf("cd: %s: No such file or directory\n", args[0]) 
+      }
+      return "", nil
     default:
       _, err := findExecutable(command)
       if err == nil {
