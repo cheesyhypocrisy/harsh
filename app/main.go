@@ -54,38 +54,38 @@ func findExecutable(command string) (string, error) {
   return "", fmt.Errorf("Executable not found in PATH: %s", command)
 }
 
-func eval(command string, args []string) (string, error) {
-    switch lookupBuiltin(command) {
+func eval(command *Command) (string, error) {
+    switch lookupBuiltin(command.Name) {
     case exit:
-      if len(args) == 0 {
+      if len(command.Args) == 0 {
         os.Exit(0)
       }
-      exitCode, err := strconv.Atoi(args[0])
+      exitCode, err := strconv.Atoi(command.Args[0])
       if err != nil {
         return "", err
       }
       os.Exit(exitCode)
     case echo:
-      return strings.Join(args, " ")+"\n", nil
+      return strings.Join(command.Args, "")+"\n", nil
     case _type:
-      if len(args) == 0 {
+      if len(command.Args) == 0 {
         return "", fmt.Errorf("Missing argument for type command\n")
       }
-      if lookupBuiltin(args[0]) == unknownBuiltin {
-        path, err := findExecutable(args[0])
+      if lookupBuiltin(command.Args[0]) == unknownBuiltin {
+        path, err := findExecutable(command.Args[0])
         if err != nil {
-          return "", fmt.Errorf("%s: not found\n", args[0])
+          return "", fmt.Errorf("%s: not found\n", command.Args[0])
         } else {
-          return fmt.Sprintf("%s is %s\n", args[0], path), nil
+          return fmt.Sprintf("%s is %s\n", command.Args[0], path), nil
         }
       } else {
-        return fmt.Sprintf("%s is a shell builtin\n", args[0]), nil
+        return fmt.Sprintf("%s is a shell builtin\n", command.Args[0]), nil
       }
     case pwd:
       dir, err := os.Getwd()
       return dir + "\n", err
     case cd:
-      if len(args) == 0 || args[0] == "~" {
+      if len(command.Args) == 0 || command.Args[0] == "~" {
         homeDir, exists := os.LookupEnv("HOME")
         if !exists {
           username := os.Getenv("USER")
@@ -98,17 +98,17 @@ func eval(command string, args []string) (string, error) {
 
         return "", nil
       }
-      if err := os.Chdir(args[0]); err != nil {
-        return "", fmt.Errorf("cd: %s: No such file or directory\n", args[0]) 
+      if err := os.Chdir(command.Args[0]); err != nil {
+        return "", fmt.Errorf("cd: %s: No such file or directory\n", command.Args[0]) 
       }
       return "", nil
     default:
-      _, err := findExecutable(command)
+      _, err := findExecutable(command.Name)
       if err == nil {
-        result, err := exec.Command(command, args...).Output()
+        result, err := exec.Command(command.Name, command.Args...).Output()
         return string(result), err
       }
-      return "", fmt.Errorf("%s: command not found\n",strings.TrimSpace(command))
+      return "", fmt.Errorf("%s: command not found\n",command.Name)
     }
 
     return "", nil
@@ -124,11 +124,17 @@ func shell() error {
     }
     
     fullCommand = strings.TrimSpace(fullCommand)
-    cliArgs := strings.Split(fullCommand, " ")
-    command := cliArgs[0]
-    args := cliArgs[1:]
+    tokens, err := NewLexer(fullCommand).Lex()
+    if err != nil {
+      return err
+    }
 
-    result, err := eval(command, args)
+    command, err := ParseTokens(tokens)
+    if err != nil {
+      return err
+    }
+
+    result, err := eval(command)
     
     if err != nil {
       fmt.Fprint(os.Stderr, err)
@@ -139,12 +145,12 @@ func shell() error {
 }
 
 func main() {
-
   path := os.Getenv("PATH")
   pathDirs = append(pathDirs, strings.Split(path, ":")...)
 
   if err := shell(); err != nil {
     fmt.Fprint(os.Stderr, err)
   }
+
 }
 
