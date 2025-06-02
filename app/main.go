@@ -8,9 +8,31 @@ import (
   "strings"
 )
 
+type builtin int
+
+const (
+  unknownBuiltin builtin = iota
+  exit
+  echo
+  _type
+)
+
+func lookupBuiltin(command string) builtin {
+  switch command {
+  case "exit":
+    return exit
+  case "echo":
+    return echo
+  case "type":
+    return _type
+  default:
+    return unknownBuiltin
+  }
+}
+
 func eval(command string, args []string) (string, error) {
-    switch command {
-    case "exit":
+    switch lookupBuiltin(command) {
+    case exit:
       if len(args) == 0 {
         os.Exit(0)
       }
@@ -19,6 +41,17 @@ func eval(command string, args []string) (string, error) {
         return "", err
       }
       os.Exit(exitCode)
+    case echo:
+      return strings.Join(args, " ")+"\n", nil
+    case _type:
+      if len(args) == 0 {
+        return "", fmt.Errorf("Missing argument for type command\n")
+      }
+      if lookupBuiltin(args[0]) == unknownBuiltin {
+        return "", fmt.Errorf("%s: not found\n", args[0])
+      } else {
+        return fmt.Sprintf("%s is a shell builtin\n", args[0]), nil
+      }
     default:
       return "", fmt.Errorf("%s: command not found\n",strings.TrimSpace(command))
     }
@@ -45,7 +78,7 @@ func shell() error {
     if err != nil {
       fmt.Fprint(os.Stderr, err)
     } else {
-      fmt.Println(result)
+      fmt.Print(result)
     }
   }
 }
