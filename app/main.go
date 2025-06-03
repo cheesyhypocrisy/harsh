@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bufio"
+  "github.com/chzyer/readline"
 	"fmt"
 	"os"
   "os/exec"
@@ -158,16 +158,28 @@ func eval(command *Command) (string, error) {
 }
 
 func shell() error {
+  autocomplete := &Autocomplete{
+    tabCount: 0,
+  }
+  rl, err := readline.NewEx(&readline.Config{
+    Prompt: "$ ",
+    AutoComplete: autocomplete,
+    InterruptPrompt: "^C",
+    EOFPrompt:       "exit",
+  })
+  if err != nil {
+    return err
+  }
+  defer rl.Close()
+
 	for {
-    fmt.Fprint(os.Stdout, "$ ")
-  
-    fullCommand, err := bufio.NewReader(os.Stdin).ReadString('\n')
+    line, err := rl.Readline()
     if err != nil {
       return err
     }
     
-    fullCommand = strings.TrimSpace(fullCommand)
-    tokens, err := NewLexer(fullCommand).Lex()
+    line = strings.TrimSpace(line)
+    tokens, err := NewLexer(line).Lex()
     if err != nil {
       return err
     }
