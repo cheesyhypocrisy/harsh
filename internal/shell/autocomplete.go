@@ -1,4 +1,4 @@
-package main
+package shell
 
 import (
   "fmt"
@@ -6,6 +6,8 @@ import (
   "unicode"
   "os"
   "sort"
+
+  "github.com/cheesyhypocrisy/harsh/internal/executor"
 )
 
 type Autocomplete struct {
@@ -37,9 +39,7 @@ func (a *Autocomplete) Do(line []rune, pos int) (newLine [][]rune, length int) {
   for _, builtin := range builtins {
     commandsSet[builtin] = true
   }
-  path := os.Getenv("PATH")
-  pathDirs = append(pathDirs, strings.Split(path, ":")...)
-  for _, dir := range pathDirs { 
+  for _, dir := range executor.PathDirs { 
     files, err := os.ReadDir(dir)
     if err != nil {
       continue

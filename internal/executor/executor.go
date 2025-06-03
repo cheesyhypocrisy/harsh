@@ -1,17 +1,18 @@
-package main
+package executor
 
 import (
-  "github.com/chzyer/readline"
-	"fmt"
-	"os"
+  "fmt"
+  "os"
   "os/exec"
   "strconv"
   "strings"
   "io"
+
+  "github.com/cheesyhypocrisy/harsh/internal/parser"
 )
 
-var pathDirs []string
-var hist []string
+var PathDirs []string
+var Hist []string
 
 type builtin int
 
@@ -46,7 +47,7 @@ func lookupBuiltin(command string) builtin {
 
 func findExecutable(command string) (string, error) {
   path := ""
-  for _, dir:= range pathDirs {
+  for _, dir:= range PathDirs {
     path = strings.TrimRight(dir, "/") + "/" + command
     _, err := os.Stat(path)
     if err == nil {
@@ -65,7 +66,7 @@ type Runnable struct {
   Wait func()
 }
 
-func WrapBuiltin(command *Command) Runnable {
+func WrapBuiltin(command *parser.Command) Runnable {
   return Runnable {
     isBuiltin: true,
     Start: func(stdin io.Reader, stdout, stderr io.Writer) {
@@ -121,7 +122,7 @@ func WrapBuiltin(command *Command) Runnable {
           fmt.Fprintf(stderr, "cd: %s: No such file or directory\n", command.Args[0]) 
         }
       case history:
-        limit := len(hist)
+        limit := len(Hist)
         err := error(nil)
         if len(command.Args) != 0 {
           limit, err = strconv.Atoi(command.Args[0])
@@ -129,8 +130,8 @@ func WrapBuiltin(command *Command) Runnable {
             fmt.Fprintf(stderr, err.Error())
           }
         }
-        for i := max(0, len(hist)-limit) ; i < len(hist); i++ {
-          fmt.Fprintf(stdout, "%d %s\n", i+1, hist[i])
+        for i := max(0, len(Hist)-limit) ; i < len(Hist); i++ {
+          fmt.Fprintf(stdout, "%d %s\n", i+1, Hist[i])
         }
       }
     },
@@ -140,7 +141,7 @@ func WrapBuiltin(command *Command) Runnable {
   }
 }
 
-func WrapExternal(command *Command) Runnable {
+func WrapExternal(command *parser.Command) Runnable {
   var cmd *exec.Cmd
   return Runnable {
     Start: func(stdin io.Reader, stdout, stderr io.Writer) {
@@ -160,7 +161,7 @@ func WrapExternal(command *Command) Runnable {
   }
 }
 
-func eval(commands []*Command) {
+func Eval(commands []*parser.Command) {
   runnables := make([]Runnable, 0)
   for _, command := range commands {
     if lookupBuiltin(command.Name) != unknownBuiltin {
@@ -228,7 +229,7 @@ func eval(commands []*Command) {
           }
         }
       }
-      commands[i].Redirs = []Redirection{}
+      commands[i].Redirs = []parser.Redirection{}
     }
 
     runnables[i].Start(stdin, stdout, stderr)
@@ -241,51 +242,5 @@ func eval(commands []*Command) {
   for _, r := range runnables {
     r.Wait()
   }
-}
-
-func shell() error {
-  autocomplete := &Autocomplete{
-    tabCount: 0,
-  }
-  rl, err := readline.NewEx(&readline.Config{
-    Prompt: "$ ",
-    AutoComplete: autocomplete,
-    InterruptPrompt: "^C",
-    EOFPrompt:       "exit",
-  })
-  if err != nil {
-    return err
-  }
-  defer rl.Close()
-
-	for {
-    line, err := rl.Readline()
-    if err != nil {
-      return err
-    }
-    
-    line = strings.TrimSpace(line)
-    hist = append(hist, line)
-    tokens, err := NewLexer(line).Lex()
-    if err != nil {
-      return err
-    }
-
-    commands, err := ParseTokens(tokens)
-    if err != nil {
-      return err
-    }
-    eval(commands)
-  }
-}
-
-func main() {
-  path := os.Getenv("PATH")
-  pathDirs = append(pathDirs, strings.Split(path, ":")...)
-
-  if err := shell(); err != nil {
-    fmt.Fprint(os.Stderr, err)
-  }
-
 }
 
