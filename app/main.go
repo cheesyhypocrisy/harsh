@@ -7,9 +7,11 @@ import (
   "os/exec"
   "strconv"
   "strings"
+  "io"
 )
 
 var pathDirs []string
+var hist []string
 
 type builtin int
 
@@ -20,6 +22,7 @@ const (
   _type
   pwd
   cd
+  history
 )
 
 func lookupBuiltin(command string) builtin {
@@ -34,6 +37,8 @@ func lookupBuiltin(command string) builtin {
     return pwd
   case "cd":
     return cd
+  case "history":
+    return history
   default:
     return unknownBuiltin
   }
@@ -54,107 +59,188 @@ func findExecutable(command string) (string, error) {
   return "", fmt.Errorf("Executable not found in PATH: %s", command)
 }
 
-func eval(command *Command) (string, error) {
-    switch lookupBuiltin(command.Name) {
-    case exit:
-      if len(command.Args) == 0 {
-        os.Exit(0)
-      }
-      exitCode, err := strconv.Atoi(command.Args[0])
-      if err != nil {
-        return "", err
-      }
-      os.Exit(exitCode)
-    case echo:
-      return strings.Join(command.Args, "")+"\n", nil
-    case _type:
-      if len(command.Args) == 0 {
-        return "", fmt.Errorf("Missing argument for type command\n")
-      }
-      if lookupBuiltin(command.Args[0]) == unknownBuiltin {
-        path, err := findExecutable(command.Args[0])
-        if err != nil {
-          return "", fmt.Errorf("%s: not found\n", command.Args[0])
-        } else {
-          return fmt.Sprintf("%s is %s\n", command.Args[0], path), nil
-        }
-      } else {
-        return fmt.Sprintf("%s is a shell builtin\n", command.Args[0]), nil
-      }
-    case pwd:
-      dir, err := os.Getwd()
-      return dir + "\n", err
-    case cd:
-      if len(command.Args) == 0 || command.Args[0] == "~" {
-        homeDir, exists := os.LookupEnv("HOME")
-        if !exists {
-          username := os.Getenv("USER")
-          homeDir = fmt.Sprintf("/home/%s", username)
-        }
+type Runnable struct {
+  isBuiltin bool
+  Start func(stdin io.Reader, stdout, stderr io.Writer)
+  Wait func()
+}
 
-        if err := os.Chdir(homeDir); err != nil {
-          return "", fmt.Errorf("cd: %s: No such file or directory\n", homeDir)
-        }
-
-        return "", nil
-      }
-      if err := os.Chdir(command.Args[0]); err != nil {
-        return "", fmt.Errorf("cd: %s: No such file or directory\n", command.Args[0]) 
-      }
-      return "", nil
-    default:
-      _, err := findExecutable(command.Name)
-      if err == nil {
-        cmd := exec.Command(command.Name, command.Args...)
-        for _, redir := range command.Redirs {
-          if redir.Type == ">" {
-            if redir.Fd == 1 {
-              file, err := os.Create(redir.FilePath)
-              if err != nil {
-                return "", err
-              }
-              defer file.Close()
-              cmd.Stdout = file
-            } else if redir.Fd == 2 {
-              file, err := os.Create(redir.FilePath)
-              if err != nil {
-                return "", err
-              }
-              defer file.Close()
-              cmd.Stderr = file
-            }
-          } else if redir.Type == ">>" {
-            if redir.Fd == 1 {
-              file, err := os.OpenFile(redir.FilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
-              if err != nil {
-                return "", err
-              }
-              defer file.Close()
-              cmd.Stdout = file
-            } else if redir.Fd == 2 {
-              file, err := os.OpenFile(redir.FilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
-              if err != nil {
-                return "", err
-              }
-              defer file.Close()
-              cmd.Stderr = file
-            }
+func WrapBuiltin(command *Command) Runnable {
+  return Runnable {
+    isBuiltin: true,
+    Start: func(stdin io.Reader, stdout, stderr io.Writer) {
+      switch lookupBuiltin(command.Name) {
+      case exit:
+        code := 0
+        err := error(nil)
+        if len(command.Args) >= 0 {
+          code, err = strconv.Atoi(command.Args[0])
+          if err != nil {
+            fmt.Fprintln(stderr, err)
           }
         }
-        if cmd.Stdout == nil {
-          cmd.Stdout = os.Stdout
+        os.Exit(code)
+      case echo:
+        output := strings.Join(command.Args, "")
+        fmt.Fprintln(stdout, output)
+      case _type:
+        if len(command.Args) == 0 {
+          fmt.Fprintln(stderr, "Missing argument for type command")
         }
-        if cmd.Stderr == nil {
-          cmd.Stderr = os.Stderr
+        if lookupBuiltin(command.Args[0]) == unknownBuiltin {
+          path, err := findExecutable(command.Args[0])
+          if err != nil {
+            fmt.Fprintf(stderr, "%s: not found\n", command.Args[0])
+          } else {
+            fmt.Fprintf(stdout, "%s is %s\n", command.Args[0], path)
+          }
+        } else {
+          fmt.Fprintf(stdout, "%s is a shell builtin\n", command.Args[0])
         }
-        _ = cmd.Run()
-        command.Redirs = []Redirection{}
-        return "", nil
+      case pwd:
+        dir, err := os.Getwd()
+        if err != nil {
+          fmt.Fprintln(stderr, err)
+        }
+        fmt.Fprintln(stdout, dir)
+      case cd:
+        if len(command.Args) == 0 || command.Args[0] == "~" {
+          homeDir, exists := os.LookupEnv("HOME")
+          if !exists {
+            username := os.Getenv("USER")
+            homeDir = fmt.Sprintf("/home/%s", username)
+          }
+
+          if err := os.Chdir(homeDir); err != nil {
+            fmt.Fprintf(stderr, "cd: %s: No such file or directory\n", homeDir)
+          }
+
+          return
+        }
+        if err := os.Chdir(command.Args[0]); err != nil {
+          fmt.Fprintf(stderr, "cd: %s: No such file or directory\n", command.Args[0]) 
+        }
+      case history:
+        limit := len(hist)
+        err := error(nil)
+        if len(command.Args) != 0 {
+          limit, err = strconv.Atoi(command.Args[0])
+          if err != nil {
+            fmt.Fprintf(stderr, err.Error())
+          }
+        }
+        for i := max(0, len(hist)-limit) ; i < len(hist); i++ {
+          fmt.Fprintf(stdout, "%d %s\n", i+1, hist[i])
+        }
       }
-      return "", fmt.Errorf("%s: command not found\n",command.Name)
+    },
+    Wait: func() {
+      return
+    },
+  }
+}
+
+func WrapExternal(command *Command) Runnable {
+  var cmd *exec.Cmd
+  return Runnable {
+    Start: func(stdin io.Reader, stdout, stderr io.Writer) {
+      cmd = exec.Command(command.Name, command.Args...)
+      cmd.Stdin = stdin
+      cmd.Stdout = stdout
+      cmd.Stderr = stderr
+
+      cmd.Start()
+    },
+    Wait: func() {
+      if cmd == nil {
+        return
+      }
+      cmd.Wait()
+    },
+  }
+}
+
+func eval(commands []*Command) {
+  runnables := make([]Runnable, 0)
+  for _, command := range commands {
+    if lookupBuiltin(command.Name) != unknownBuiltin {
+      runnables = append(runnables, WrapBuiltin(command))
+    } else{
+      _, err := findExecutable(command.Name)
+      if err == nil {
+        runnables = append(runnables, WrapExternal(command))
+      } else {
+        fmt.Fprintf(os.Stderr, "%s: command not found\n",command.Name)
+      }
+    }
+  }
+
+  pipes := make([]*os.File, 0, 2*len(runnables))
+
+  for i := 0; i < len(runnables); i++ {
+    var stdin io.Reader = os.Stdin
+    var stdout io.Writer = os.Stdout
+    var stderr io.Writer = os.Stderr
+
+    if i > 0 {
+      stdin = pipes[2*(i-1)]
     }
 
-    return "", nil
+    if i < len(runnables)-1 {
+      r, w, _ := os.Pipe()
+      pipes = append(pipes, r, w)
+      stdout = w
+    }
+
+    if i == len(runnables)-1 {
+      for _, redir := range commands[i].Redirs {
+        if redir.Type == ">" {
+          if redir.Fd == 1 {
+            file, err := os.Create(redir.FilePath)
+            if err != nil {
+              fmt.Fprint(os.Stderr, err)
+            }
+            defer file.Close()
+            stdout = file
+          } else if redir.Fd == 2 {
+            file, err := os.Create(redir.FilePath)
+            if err != nil {
+              fmt.Fprint(os.Stderr, err)
+            }
+            defer file.Close()
+            stderr = file
+          }
+        } else if redir.Type == ">>" {
+          if redir.Fd == 1 {
+            file, err := os.OpenFile(redir.FilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+            if err != nil {
+              fmt.Fprint(os.Stderr, err)
+            }
+            defer file.Close()
+            stdout = file
+          } else if redir.Fd == 2 {
+            file, err := os.OpenFile(redir.FilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+            if err != nil {
+              fmt.Fprint(os.Stderr, err)
+            }
+            defer file.Close()
+            stderr = file
+          }
+        }
+      }
+      commands[i].Redirs = []Redirection{}
+    }
+
+    runnables[i].Start(stdin, stdout, stderr)
+  }
+
+  for _, pipe := range pipes {
+    pipe.Close()
+  }
+
+  for _, r := range runnables {
+    r.Wait()
+  }
 }
 
 func shell() error {
@@ -179,56 +265,17 @@ func shell() error {
     }
     
     line = strings.TrimSpace(line)
+    hist = append(hist, line)
     tokens, err := NewLexer(line).Lex()
     if err != nil {
       return err
     }
 
-    command, err := ParseTokens(tokens)
+    commands, err := ParseTokens(tokens)
     if err != nil {
       return err
     }
-
-    result, err := eval(command)
-    stdout := os.Stdout
-    stderr := os.Stderr
-    for _, redir := range command.Redirs {
-      if redir.Type == ">" && redir.Fd == 1 {
-        file, err := os.Create(redir.FilePath)
-        if err != nil {
-          return err
-        }
-        defer file.Close()
-        stdout = file
-      } else if redir.Type == ">" && redir.Fd == 2 {
-        file, err := os.Create(redir.FilePath)
-        if err != nil {
-          return err
-        }
-        defer file.Close()
-        stderr = file
-      } else if redir.Type == ">>" && redir.Fd == 1 {
-        file, err := os.OpenFile(redir.FilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
-        if err != nil {
-          return err
-        }
-        defer file.Close()
-        stdout = file
-      } else if redir.Type == ">>" && redir.Fd == 2 {
-        file, err := os.OpenFile(redir.FilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
-        if err != nil {
-          return err
-        }
-        defer file.Close()
-        stderr = file
-      }
-    }
-    
-    if err != nil {
-      fmt.Fprint(stderr, err)
-    } else {
-      fmt.Fprint(stdout, result)
-    }
+    eval(commands)
   }
 }
 

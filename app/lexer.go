@@ -9,6 +9,7 @@ const (
   Space
   Redirect
   Append
+  Pipe
 )
 
 type Token struct {
@@ -90,7 +91,7 @@ func (l *Lexer) Lex() ([]Token, error) {
           tokens = append(tokens, Token{typ: Redirect, literal: "stdout"})
           l.position = curr+1
         } else {
-          tokens = append(tokens, Token{typ: LiteralStr, literal: string(1)})
+          tokens = append(tokens, Token{typ: LiteralStr, literal: string('1')})
           l.position++
         }
       case '2':
@@ -105,7 +106,7 @@ func (l *Lexer) Lex() ([]Token, error) {
           tokens = append(tokens, Token{typ: Redirect, literal: "stderr"})
           l.position = curr+1
         } else {
-          tokens = append(tokens, Token{typ: LiteralStr, literal: string(2)})
+          tokens = append(tokens, Token{typ: LiteralStr, literal: string('2')})
           l.position++
         }
       case '>':
@@ -116,6 +117,9 @@ func (l *Lexer) Lex() ([]Token, error) {
           tokens = append(tokens, Token{typ: Redirect, literal: "stdout"})
           l.position++
         }
+      case '|':
+        tokens = append(tokens, Token{typ: Pipe, literal: "pipe"})
+        l.position++
       default:
         curr := ""
         end := l.position
