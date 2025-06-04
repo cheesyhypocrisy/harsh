@@ -87,6 +87,7 @@ func WrapBuiltin(command *parser.Command) Runnable {
       case _type:
         if len(command.Args) == 0 {
           fmt.Fprintln(stderr, "Missing argument for type command")
+          return
         }
         if lookupBuiltin(command.Args[0]) == unknownBuiltin {
           path, err := findExecutable(command.Args[0])
@@ -127,7 +128,7 @@ func WrapBuiltin(command *parser.Command) Runnable {
         if len(command.Args) != 0 {
           limit, err = strconv.Atoi(command.Args[0])
           if err != nil {
-            fmt.Fprintf(stderr, err.Error())
+            fmt.Fprintf(stderr, "%s", err.Error())
           }
         }
         for i := max(0, len(Hist)-limit) ; i < len(Hist); i++ {
