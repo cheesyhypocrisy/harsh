@@ -27,7 +27,13 @@ func ParseTokens(tokens []lexer.Token) ([]*Command, error) {
     if err != nil {
       return []*Command{}, err
     }
-    commands = append(commands, command)
+    if command != nil {
+      commands = append(commands, command)
+    }
+  }
+
+  if len(commands) == 0 {
+    return []*Command{}, fmt.Errorf("No command provided!")
   }
   return commands, nil
 }
@@ -36,6 +42,9 @@ func ParseCommand(tokens []lexer.Token, start int) (*Command, int, error) {
   i := start
   for i < len(tokens) && tokens[i].Typ == lexer.Space {
     i++
+  }
+  if i >= len(tokens) {
+    return nil, len(tokens), nil
   }
   if tokens[i].Typ != lexer.LiteralStr {
     return nil, len(tokens), fmt.Errorf("No command provided!")
