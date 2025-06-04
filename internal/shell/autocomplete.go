@@ -87,7 +87,7 @@ func (a *Autocomplete) Do(line []rune, pos int) (newLine [][]rune, length int) {
 
     fmt.Fprintf(os.Stdout,"\r\n")
     for i, suggestion := range suggestions {
-      fmt.Fprintf(os.Stdout, input + string(suggestion))
+      fmt.Fprintf(os.Stdout, "%s", input + string(suggestion))
       if i != len(suggestions)-1 {
         fmt.Fprintf(os.Stdout, " ")
       }

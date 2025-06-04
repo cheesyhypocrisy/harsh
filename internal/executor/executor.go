@@ -78,6 +78,7 @@ func WrapBuiltin(command *parser.Command) Runnable {
           code, err = strconv.Atoi(command.Args[0])
           if err != nil {
             fmt.Fprintln(stderr, err)
+            return
           }
         }
         os.Exit(code)
@@ -103,6 +104,7 @@ func WrapBuiltin(command *parser.Command) Runnable {
         dir, err := os.Getwd()
         if err != nil {
           fmt.Fprintln(stderr, err)
+          return
         }
         fmt.Fprintln(stdout, dir)
       case cd:
@@ -129,6 +131,7 @@ func WrapBuiltin(command *parser.Command) Runnable {
           limit, err = strconv.Atoi(command.Args[0])
           if err != nil {
             fmt.Fprintf(stderr, "%s", err.Error())
+            return
           }
         }
         for i := max(0, len(Hist)-limit) ; i < len(Hist); i++ {
