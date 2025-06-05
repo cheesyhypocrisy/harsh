@@ -72,6 +72,22 @@ func TestLexer(t *testing.T) {
       },
       hasError: false,
     },
+    {
+      name:  "Double quotes in middle of literal",
+      input: "echo \"example\"  \"test's\"  shell\"\"world",
+      expected: []Token{
+        {Typ: LiteralStr, Literal: "echo"},
+        {Typ: Space, Literal: " "},
+        {Typ: LiteralStr, Literal: "example"},
+        {Typ: Space, Literal: " "},
+        {Typ: LiteralStr, Literal: "test's"},
+        {Typ: Space, Literal: " "},
+        {Typ: LiteralStr, Literal: "shell"},
+        {Typ: LiteralStr, Literal: ""},
+        {Typ: LiteralStr, Literal: "world"},
+      },
+      hasError: false,
+    },
   }
 
   for _, test := range tests {

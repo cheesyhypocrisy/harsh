@@ -123,7 +123,7 @@ func (l *Lexer) Lex() ([]Token, error) {
 		default:
 			curr := ""
 			end := l.position
-			for end < len(l.input) && (l.input[end] != ' ' && l.input[end] != '\'') {
+			for end < len(l.input) && (l.input[end] != ' ' && l.input[end] != '\'' && l.input[end] != '"') {
 				if l.input[end] == '\\' {
 					if end+1 < len(l.input) {
 						next := l.input[end+1]

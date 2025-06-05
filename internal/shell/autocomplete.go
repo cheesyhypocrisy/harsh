@@ -18,7 +18,6 @@ type Autocomplete struct {
 
 func (a *Autocomplete) Do(line []rune, pos int) (newLine [][]rune, length int) {
   if a.lastLine == string(line) && a.lastPos == pos {
-    fmt.Println(a.tabCount)
     a.tabCount = 1
   } else {
     a.tabCount = 0
