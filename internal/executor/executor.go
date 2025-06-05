@@ -7,6 +7,7 @@ import (
   "strconv"
   "strings"
   "io"
+  "bufio"
 
   "github.com/cheesyhypocrisy/harsh/internal/parser"
 )
@@ -128,10 +129,35 @@ func WrapBuiltin(command *parser.Command) Runnable {
         limit := len(Hist)
         err := error(nil)
         if len(command.Args) != 0 {
-          limit, err = strconv.Atoi(command.Args[0])
-          if err != nil {
-            fmt.Fprintf(stderr, "%s", err.Error())
+          if command.Args[0] == "-r" {
+            if len(command.Args) < 2 {
+              fmt.Fprintf(stderr, "Missing history file to read from\n")
+              // TODO: This should actually read from $HISTFILE
+              return
+            }
+            filename := command.Args[1]
+            file, err := os.Open(filename)
+            if err != nil {
+              fmt.Fprintf(stderr, "Unable to read history from file %s with err: %#v\n", filename, err.Error())
+              return
+            }
+            defer file.Close()
+
+            scanner := bufio.NewScanner(file)
+            for scanner.Scan() {
+              Hist = append(Hist, scanner.Text())
+            }
+
+            if err := scanner.Err(); err != nil {
+              fmt.Fprintf(stderr, "Unable to read history from file %s with err: %#v\n", filename, err.Error())
+            }
             return
+          } else {
+            limit, err = strconv.Atoi(command.Args[0])
+            if err != nil {
+              fmt.Fprintf(stderr, "%s", err.Error())
+              return
+            }
           }
         }
         for i := max(0, len(Hist)-limit) ; i < len(Hist); i++ {
