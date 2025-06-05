@@ -155,7 +155,26 @@ func WrapBuiltin(command *parser.Command) Runnable {
           } else if command.Args[0] == "-w" {
             if len(command.Args) < 2 {
               fmt.Fprintf(stderr, "Missing history file to write to\n")
-              // TODO: This should actually write from $HISTFILE if nothing is provided
+              // TODO: This should actually write to $HISTFILE if nothing is provided
+              return
+            }
+            filename := command.Args[1]
+            file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0600)
+            if err != nil {
+              fmt.Fprintf(stderr, "Unable to write history to file %s with err: %#v\n", filename, err.Error())
+              return
+            }
+            defer file.Close()
+
+            for i := 0; i < len(Hist); i++ {
+              fmt.Fprintf(file, "%s\n", Hist[i])
+            }
+
+            return
+          } else if command.Args[0] == "-a" {
+            if len(command.Args) < 2 {
+              fmt.Fprintf(stderr, "Missing history file to append to\n")
+              // TODO: This should actually append to $HISTFILE if nothing is provided
               return
             }
             filename := command.Args[1]
@@ -166,7 +185,14 @@ func WrapBuiltin(command *parser.Command) Runnable {
             }
             defer file.Close()
 
-            for i := 0; i < len(Hist); i++ {
+            start := 0
+            for i := 0; i < len(Hist)-1; i++ {
+              if strings.HasPrefix(strings.Trim(Hist[i], " "), "history -a") {
+                start = i+1
+              }
+            }
+
+            for i := start; i < len(Hist); i++ {
               fmt.Fprintf(file, "%s\n", Hist[i])
             }
 
