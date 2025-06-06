@@ -73,6 +73,21 @@ func WrapBuiltin(command *parser.Command) Runnable {
     Start: func(stdin io.Reader, stdout, stderr io.Writer) {
       switch lookupBuiltin(command.Name) {
       case exit:
+        // Write history to $HISTFILE if set
+        histfile, exists := os.LookupEnv("HISTFILE")
+        if exists {
+          file, err := os.OpenFile(histfile, os.O_WRONLY|os.O_CREATE, 0600)
+          if err != nil {
+            fmt.Fprintf(stderr, "Unable to write history to file %s with err: %#v\n", histfile, err.Error())
+            return
+          }
+          defer file.Close()
+
+          for i := 0; i < len(Hist); i++ {
+            fmt.Fprintf(file, "%s\n", Hist[i])
+          }
+        }
+
         code := 0
         err := error(nil)
         if len(command.Args) >= 0 {
@@ -82,6 +97,7 @@ func WrapBuiltin(command *parser.Command) Runnable {
             return
           }
         }
+
         os.Exit(code)
       case echo:
         output := strings.Join(command.Args, "")
